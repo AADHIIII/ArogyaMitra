@@ -1,0 +1,377 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  PATIENT
+  DOCTOR
+  ADMIN
+  CARE_COORDINATOR
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  PENDING_VERIFICATION
+}
+
+model User {
+  id           String     @id @default(uuid())
+  email        String     @unique
+  phone        String?    @unique
+  firstName    String
+  lastName     String
+  role         UserRole
+  status       UserStatus @default(PENDING_VERIFICATION)
+  profileImage String?
+  passwordHash String
+  
+  // Relationships
+  patientProfile PatientProfile?
+  doctorProfile  DoctorProfile?
+  
+  // Appointments
+  patientAppointments Appointment[] @relation("PatientAppointments")
+  doctorAppointments  Appointment[] @relation("DoctorAppointments")
+  
+  // Messages
+  sentMessages     Message[] @relation("SentMessages")
+  receivedMessages Message[] @relation("ReceivedMessages")
+  
+  // Notifications
+  notifications Notification[]
+  notificationPreferences NotificationPreference[]
+  
+  // Prescriptions
+  patientPrescriptions Prescription[] @relation("PatientPrescriptions")
+  doctorPrescriptions  Prescription[] @relation("DoctorPrescriptions")
+  medicationIntakes    MedicationIntake[]
+  
+  // Doctor availability
+  doctorAvailability DoctorAvailability[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+model PatientProfile {
+  id                 String  @id @default(uuid())
+  userId             String  @unique
+  user               User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  dateOfBirth        DateTime
+  gender             Gender
+  address            String
+  city               String
+  state              String
+  zipCode            String
+  emergencyContact   String
+  insuranceProvider  String?
+  insuranceNumber    String?
+  medicalHistory     String?
+  allergies          String?
+  currentMedications String?
+  preferredLanguage  String  @default("en")
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("patient_profiles")
+}
+
+model DoctorProfile {
+  id                  String   @id @default(uuid())
+  userId              String   @unique
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  licenseNumber       String   @unique
+  specialty           String
+  subSpecialty        String?
+  yearsOfExperience   Int
+  education           String
+  hospitalAffiliation String?
+  consultationFee     Float
+  bio                 String?
+  languages           String[] // Array of language codes
+  rating              Float    @default(0)
+  totalReviews        Int      @default(0)
+  isVerified          Boolean  @default(false)
+  acceptsInsurance    Boolean  @default(true)
+  
+
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("doctor_profiles")
+}
+
+model DoctorAvailability {
+  id           String @id @default(uuid())
+  doctorId     String
+  doctor       User   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  
+  dayOfWeek    Int    // 0 = Sunday, 6 = Saturday
+  startTime    String // HH:MM format
+  endTime      String // HH:MM format
+  slotDuration Int    @default(30) // minutes
+  bufferTime   Int    @default(5)  // minutes between appointments
+  isActive     Boolean @default(true)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([doctorId, dayOfWeek, startTime])
+  @@map("doctor_availability")
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+  RESCHEDULED
+}
+
+enum AppointmentType {
+  IN_PERSON
+  TELEHEALTH
+  FOLLOW_UP
+  CONSULTATION
+  EMERGENCY
+}
+
+model Appointment {
+  id               String            @id @default(uuid())
+  patientId        String
+  patient          User              @relation("PatientAppointments", fields: [patientId], references: [id])
+  doctorId         String
+  doctor           User              @relation("DoctorAppointments", fields: [doctorId], references: [id])
+  
+  scheduledAt      DateTime
+  duration         Int               @default(30) // minutes
+  type             AppointmentType
+  status           AppointmentStatus @default(SCHEDULED)
+  reason           String
+  notes            String?
+  symptoms         String?
+  diagnosis        String?
+  prescription     String?
+  followUpRequired Boolean           @default(false)
+  followUpDate     DateTime?
+  reminderSent     Boolean           @default(false)
+  
+  // Relationships
+  prescriptions Prescription[]
+  messages      Message[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("appointments")
+}
+
+enum MedicationFrequency {
+  ONCE_DAILY
+  TWICE_DAILY
+  THREE_TIMES_DAILY
+  FOUR_TIMES_DAILY
+  AS_NEEDED
+  WEEKLY
+  CUSTOM
+}
+
+enum MedicationUnit {
+  MG
+  ML
+  TABLET
+  CAPSULE
+  DROP
+  SPRAY
+  PATCH
+}
+
+model Prescription {
+  id              String              @id @default(uuid())
+  appointmentId   String
+  appointment     Appointment         @relation(fields: [appointmentId], references: [id])
+  patientId       String
+  patient         User                @relation("PatientPrescriptions", fields: [patientId], references: [id])
+  doctorId        String
+  doctor          User                @relation("DoctorPrescriptions", fields: [doctorId], references: [id])
+  
+  medicationName  String
+  dosage          Float
+  unit            MedicationUnit
+  frequency       MedicationFrequency
+  customFrequency String?             // For CUSTOM frequency
+  duration        Int                 // days
+  instructions    String?
+  startDate       DateTime
+  endDate         DateTime
+  refillsAllowed  Int                 @default(0)
+  isActive        Boolean             @default(true)
+  
+  // Relationships
+  medicationIntakes MedicationIntake[]
+  reminders         MedicationReminder[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("prescriptions")
+}
+
+model MedicationIntake {
+  id             String       @id @default(uuid())
+  prescriptionId String
+  prescription   Prescription @relation(fields: [prescriptionId], references: [id])
+  patientId      String
+  patient        User         @relation(fields: [patientId], references: [id])
+  
+  scheduledAt DateTime
+  takenAt     DateTime?
+  confirmed   Boolean  @default(false)
+  skipped     Boolean  @default(false)
+  notes       String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("medication_intakes")
+}
+
+model MedicationReminder {
+  id             String       @id @default(uuid())
+  prescriptionId String
+  prescription   Prescription @relation(fields: [prescriptionId], references: [id])
+  patientId      String
+  
+  reminderTime String  // HH:MM format
+  isActive     Boolean @default(true)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("medication_reminders")
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  DOCUMENT
+  SYSTEM
+}
+
+enum MessageStatus {
+  SENT
+  DELIVERED
+  READ
+}
+
+model Message {
+  id            String        @id @default(uuid())
+  fromUserId    String
+  fromUser      User          @relation("SentMessages", fields: [fromUserId], references: [id])
+  toUserId      String
+  toUser        User          @relation("ReceivedMessages", fields: [toUserId], references: [id])
+  appointmentId String?
+  appointment   Appointment?  @relation(fields: [appointmentId], references: [id])
+  
+  type          MessageType
+  content       String
+  attachmentUrl String?
+  status        MessageStatus @default(SENT)
+  readAt        DateTime?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("messages")
+}
+
+enum NotificationType {
+  APPOINTMENT_REMINDER
+  MEDICATION_REMINDER
+  APPOINTMENT_CONFIRMED
+  APPOINTMENT_CANCELLED
+  APPOINTMENT_RESCHEDULED
+  NEW_MESSAGE
+  PRESCRIPTION_ADDED
+  FOLLOW_UP_REQUIRED
+  SYSTEM_ALERT
+}
+
+enum NotificationChannel {
+  PUSH
+  SMS
+  EMAIL
+  IN_APP
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+  READ
+}
+
+model Notification {
+  id          String             @id @default(uuid())
+  userId      String
+  user        User               @relation(fields: [userId], references: [id])
+  
+  type        NotificationType
+  channel     NotificationChannel
+  title       String
+  message     String
+  data        Json?              // Additional data as JSON
+  status      NotificationStatus @default(PENDING)
+  scheduledAt DateTime
+  sentAt      DateTime?
+  readAt      DateTime?
+  retryCount  Int                @default(0)
+  maxRetries  Int                @default(3)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("notifications")
+}
+
+model NotificationPreference {
+  id             String               @id @default(uuid())
+  userId         String
+  user           User                 @relation(fields: [userId], references: [id])
+  
+  type           NotificationType
+  channels       NotificationChannel[]
+  isEnabled      Boolean              @default(true)
+  reminderMinutes Int?                // For reminders
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, type])
+  @@map("notification_preferences")
+}
