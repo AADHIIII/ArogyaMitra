@@ -1,5 +1,7 @@
 # 🏥 ArogyaMitra Healthcare Platform
 
+<img width="819" height="948" alt="Screenshot 2025-10-12 at 9 58 50 PM" src="https://github.com/user-attachments/assets/16b967dd-e5d1-4f2d-aa39-6871e733278b" />
+
 > **Complete Full-Stack Healthcare Management System**  
 > Connecting patients with healthcare providers through modern technology
 
